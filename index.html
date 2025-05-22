@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Particle Cloud Visualizer</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050505; /* Even darker */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #f5f5f5;
+            touch-action: none;
+        }
+        canvas {
+            display: block;
+            /* background-color is now controlled by JavaScript for fade effect */
+            border-radius: 8px;
+            box-shadow: 0 0 25px rgba(0, 230, 230, 0.2);
+        }
+        #controlsContainer {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(25, 25, 25, 0.92);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            z-index: 1000;
+            border: 1px solid #303030;
+        }
+        #controlsContainer h2 {
+            margin-top: 0;
+            margin-bottom: 12px;
+            text-align: center;
+            font-size: 1.4em;
+            color: #00f5f5;
+            border-bottom: 1px solid #00f5f5;
+            padding-bottom: 8px;
+        }
+        .control-group { display: flex; flex-direction: column; gap: 6px; }
+        label { font-size: 0.95em; color: #e0e0e0; }
+        input[type="range"], input[type="color"], select, input[type="number"] {
+            width: 100%;
+            max-width: 230px; /* Slightly wider */
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #777;
+            background-color: #303030;
+            color: #f5f5f5;
+            box-sizing: border-box;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        input[type="range"]:focus, input[type="color"]:focus, select:focus, input[type="number"]:focus {
+            border-color: #00f5f5;
+            box-shadow: 0 0 8px rgba(0, 245, 245, 0.6);
+            outline: none;
+        }
+        input[type="color"] { height: 40px; }
+        .value-display { font-size: 0.9em; color: #00f5f5; text-align: right; font-weight: bold; }
+        button {
+            padding: 12px 18px; background-color: #00b8b8; color: white; border: none;
+            border-radius: 6px; cursor: pointer; transition: background-color 0.2s ease-in-out, transform 0.1s;
+            font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        button:hover { background-color: #00dede; }
+        button:active { transform: translateY(1px); }
+
+        @media (max-width: 600px) {
+            #controlsContainer { top: auto; bottom: 5px; left: 5px; right: 5px; max-height: 48vh; padding: 12px; }
+            #controlsContainer h2 { font-size: 1.2em; }
+            input[type="range"], input[type="color"], select, input[type="number"] { max-width: none; }
+        }
+    </style>
+</head>
+<body>
+    <div id="controlsContainer">
+        <h2>Hyper Controls</h2>
+        <div class="control-group">
+            <label for="particleCount">Particle Count: <span id="particleCountValue" class="value-display">150</span></label>
+            <input type="range" id="particleCount" min="10" max="800" value="350" step="10">
+        </div>
+        <div class="control-group">
+            <label for="particleColor">Particle Color:</label>
+            <input type="color" id="particleColor" value="#00e0ff">
+        </div>
+         <div class="control-group">
+            <label for="particleStyle">Particle Style:</label>
+            <select id="particleStyle">
+                <option value="circle">Circle</option>
+                <option value="square">Square</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="particleSize">Particle Size: <span id="particleSizeValue" class="value-display">2.0</span></label>
+            <input type="range" id="particleSize" min="0.5" max="12" value="2.0" step="0.1">
+        </div>
+        <div class="control-group">
+            <label for="particleSpeed">Max Speed: <span id="particleSpeedValue" class="value-display">1.0</span></label>
+            <input type="range" id="particleSpeed" min="0.1" max="10" step="0.1" value="1.0">
+        </div>
+        <div class="control-group">
+            <label for="canvasFadeOpacity">Canvas Fade Opacity: <span id="canvasFadeOpacityValue" class="value-display">0.1</span></label>
+            <input type="range" id="canvasFadeOpacity" min="0.01" max="1" value="0.1" step="0.01">
+        </div>
+        <div class="control-group">
+            <label for="shape">Shape:</label>
+            <select id="shape">
+                <option value="random_roam">Random Roam</option>
+                <option value="circle">Circle</option>
+                <option value="square_shape">Square Formation</option> <option value="line_wave">Line Wave</option>
+                <option value="flow_field">Flow Field</option>
+                <option value="exploding_star">Exploding Star</option>
+                <option value="attract_to_pointer">Attract to Pointer</option>
+                <option value="repel_from_pointer">Repel from Pointer</option>
+            </select>
+        </div>
+         <div class="control-group" id="flowFieldControlsGroup" style="display:none;">
+            <label for="flowFieldSpeed">Flow Field Speed: <span id="flowFieldSpeedValue" class="value-display">0.01</span></label>
+            <input type="range" id="flowFieldSpeed" min="0.0005" max="0.03" value="0.01" step="0.0005">
+            <label for="flowFieldScale">Flow Field Scale: <span id="flowFieldScaleValue" class="value-display">0.005</span></label>
+            <input type="range" id="flowFieldScale" min="0.0005" max="0.02" value="0.005" step="0.0005">
+        </div>
+         <div class="control-group" id="pointerControlsGroup" style="display:none;">
+             <label for="pointerRadius">Pointer Radius: <span id="pointerRadiusValue" class="value-display">150</span></label>
+            <input type="range" id="pointerRadius" min="20" max="500" value="150" step="10">
+        </div>
+        <div class="control-group">
+            <label for="connectionDistance">Line Connection Distance: <span id="connectionDistanceValue" class="value-display">70</span></label>
+            <input type="range" id="connectionDistance" min="0" max="250" value="70" step="5">
+        </div>
+         <div class="control-group">
+            <label for="lineStyle">Line Style:</label>
+            <select id="lineStyle">
+                <option value="gradient">Gradient</option>
+                <option value="solid">Solid Color</option>
+            </select>
+        </div>
+         <div class="control-group">
+            <label for="lineWidth">Line Width: <span id="lineWidthValue" class="value-display">0.3</span></label>
+            <input type="range" id="lineWidth" min="0.1" max="2.5" value="0.3" step="0.05">
+        </div>
+        <div class="control-group">
+            <label for="canvasBackgroundColor">Canvas Base Color:</label>
+            <input type="color" id="canvasBackgroundColor" value="#101010">
+        </div>
+        <button id="resetButton">Reset Defaults</button>
+    </div>
+
+    <canvas id="particleCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('particleCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let particles = [];
+        let pointer = { x: null, y: null, radius: 150, isDown: false };
+        let time = 0;
+        let spatialGrid = {};
+        let gridCellSize = 100;
+
+
+        const ui = {
+            particleCount: document.getElementById('particleCount'),
+            particleCountValue: document.getElementById('particleCountValue'),
+            particleColor: document.getElementById('particleColor'),
+            particleStyle: document.getElementById('particleStyle'),
+            particleSize: document.getElementById('particleSize'),
+            particleSizeValue: document.getElementById('particleSizeValue'),
+            particleSpeed: document.getElementById('particleSpeed'),
+            particleSpeedValue: document.getElementById('particleSpeedValue'),
+            canvasFadeOpacity: document.getElementById('canvasFadeOpacity'),
+            canvasFadeOpacityValue: document.getElementById('canvasFadeOpacityValue'),
+            shape: document.getElementById('shape'),
+            flowFieldControlsGroup: document.getElementById('flowFieldControlsGroup'),
+            flowFieldSpeed: document.getElementById('flowFieldSpeed'),
+            flowFieldSpeedValue: document.getElementById('flowFieldSpeedValue'),
+            flowFieldScale: document.getElementById('flowFieldScale'),
+            flowFieldScaleValue: document.getElementById('flowFieldScaleValue'),
+            pointerControlsGroup: document.getElementById('pointerControlsGroup'),
+            pointerRadius: document.getElementById('pointerRadius'),
+            pointerRadiusValue: document.getElementById('pointerRadiusValue'),
+            connectionDistance: document.getElementById('connectionDistance'),
+            connectionDistanceValue: document.getElementById('connectionDistanceValue'),
+            lineStyle: document.getElementById('lineStyle'),
+            lineWidth: document.getElementById('lineWidth'),
+            lineWidthValue: document.getElementById('lineWidthValue'),
+            canvasBackgroundColor: document.getElementById('canvasBackgroundColor'), // Changed from backgroundColor
+            resetButton: document.getElementById('resetButton'),
+            canvasBody: document.body, // Not used for canvas bg anymore
+            canvasElement: canvas
+        };
+
+        const defaultSettings = {
+            count: 150,
+            color: '#00e0ff',
+            particleStyle: 'circle',
+            size: 2.0,
+            speed: 1.0,
+            canvasFadeOpacity: 1.0,
+            shape: 'flow_field',
+            flowFieldSpeed: 0.008,
+            flowFieldScale: 0.005,
+            pointerRadius: 150,
+            connectionDistance: 70,
+            lineStyle: 'gradient',
+            lineWidth: 0.3,
+            canvasBackgroundColor: '#101010'
+        };
+
+        let currentSettings = { ...defaultSettings };
+
+        function updateValueDisplays() {
+            ui.particleCountValue.textContent = currentSettings.count;
+            ui.particleSizeValue.textContent = currentSettings.size.toFixed(1);
+            ui.particleSpeedValue.textContent = currentSettings.speed.toFixed(1);
+            ui.canvasFadeOpacityValue.textContent = currentSettings.canvasFadeOpacity.toFixed(2);
+            ui.flowFieldSpeedValue.textContent = currentSettings.flowFieldSpeed.toFixed(4);
+            ui.flowFieldScaleValue.textContent = currentSettings.flowFieldScale.toFixed(4);
+            ui.pointerRadiusValue.textContent = currentSettings.pointerRadius;
+            ui.connectionDistanceValue.textContent = currentSettings.connectionDistance;
+            ui.lineWidthValue.textContent = currentSettings.lineWidth.toFixed(2);
+        }
+
+        function updateSettingsFromUI() {
+            currentSettings.count = parseInt(ui.particleCount.value);
+            currentSettings.color = ui.particleColor.value;
+            currentSettings.particleStyle = ui.particleStyle.value;
+            currentSettings.size = parseFloat(ui.particleSize.value);
+            currentSettings.speed = parseFloat(ui.particleSpeed.value);
+            currentSettings.canvasFadeOpacity = parseFloat(ui.canvasFadeOpacity.value);
+            currentSettings.shape = ui.shape.value;
+            currentSettings.flowFieldSpeed = parseFloat(ui.flowFieldSpeed.value);
+            currentSettings.flowFieldScale = parseFloat(ui.flowFieldScale.value);
+            currentSettings.pointerRadius = parseInt(ui.pointerRadius.value);
+            pointer.radius = currentSettings.pointerRadius; // Update pointer object directly
+            currentSettings.connectionDistance = parseInt(ui.connectionDistance.value);
+            gridCellSize = currentSettings.connectionDistance > 0 ? currentSettings.connectionDistance : 100; // Update grid cell size
+            currentSettings.lineStyle = ui.lineStyle.value;
+            currentSettings.lineWidth = parseFloat(ui.lineWidth.value);
+            currentSettings.canvasBackgroundColor = ui.canvasBackgroundColor.value;
+
+            ui.flowFieldControlsGroup.style.display = currentSettings.shape === 'flow_field' ? 'flex' : 'none';
+            const pointerShapes = ['attract_to_pointer', 'repel_from_pointer'];
+            ui.pointerControlsGroup.style.display = pointerShapes.includes(currentSettings.shape) ? 'flex' : 'none';
+            updateValueDisplays();
+        }
+
+        function applyDefaultSettings() {
+            Object.keys(defaultSettings).forEach(key => {
+                if (ui[key] && ui[key].value !== undefined) {
+                     ui[key].value = defaultSettings[key];
+                }
+            });
+            updateSettingsFromUI(); // This will also update pointer.radius and gridCellSize
+            initParticles();
+        }
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = currentSettings.size;
+                this.baseSize = currentSettings.size;
+                this.color = currentSettings.color;
+                this.speedFactor = (Math.random() * 0.6 + 0.4); // More controlled variation
+                this.vx = (Math.random() - 0.5) * currentSettings.speed * this.speedFactor;
+                this.vy = (Math.random() - 0.5) * currentSettings.speed * this.speedFactor;
+                this.shapeTargetX = null;
+                this.shapeTargetY = null;
+                this.alpha = 0;
+                this.maxAlpha = 0.95;
+                this.isExploding = false;
+                this.explosionTime = 0;
+            }
+
+            draw() {
+                const particleRgbColor = hexToRgb(this.color);
+                ctx.fillStyle = `rgba(${particleRgbColor.r}, ${particleRgbColor.g}, ${particleRgbColor.b}, ${this.alpha})`;
+                ctx.beginPath();
+                if (currentSettings.particleStyle === 'square') {
+                    ctx.fillRect(this.x - this.size / 2, this.y - this.size / 2, this.size, this.size);
+                } else { // Default to circle
+                    ctx.arc(this.x, this.y, Math.max(0.1, this.size), 0, Math.PI * 2);
+                }
+                ctx.fill();
+            }
+
+            update(deltaTime) {
+                const dtFactor = deltaTime / 16.67; // Normalize to 60 FPS baseline
+
+                if (this.alpha < this.maxAlpha) {
+                    this.alpha += 0.05 * dtFactor;
+                    if (this.alpha > this.maxAlpha) this.alpha = this.maxAlpha;
+                }
+
+                this.baseSize = currentSettings.size;
+                if (!this.isExploding) this.size = this.baseSize;
+                this.color = currentSettings.color;
+
+                if (this.isExploding) {
+                    this.explosionTime += dtFactor;
+                    const duration = 30;
+                    this.size = this.baseSize * Math.max(0.1, 1 - (this.explosionTime / duration));
+                    if (this.explosionTime > duration * 1.5) {
+                        this.isExploding = false; this.size = this.baseSize;
+                    }
+                }
+
+                const shape = currentSettings.shape;
+                if (shape === 'flow_field') {
+                    const scale = currentSettings.flowFieldScale;
+                    const angle = (Math.cos(this.x * scale + time) + Math.sin(this.y * scale + time)) * Math.PI * 2; // Wider angle range
+                    const flowSpeed = currentSettings.flowFieldSpeed * 200; // Adjusted scaling
+                    this.vx += Math.cos(angle) * flowSpeed * 0.01 * dtFactor;
+                    this.vy += Math.sin(angle) * flowSpeed * 0.01 * dtFactor;
+                    this.shapeTargetX = null; this.shapeTargetY = null;
+                } else if ((shape === 'attract_to_pointer' || shape === 'repel_from_pointer') && pointer.x !== null) {
+                    let dx = pointer.x - this.x;
+                    let dy = pointer.y - this.y;
+                    let distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance === 0) distance = 0.1;
+
+                    if (distance < pointer.radius) {
+                        let fdx = dx / distance; let fdy = dy / distance;
+                        let fMag = (pointer.radius - distance) / pointer.radius;
+                        let fApplied = fMag * currentSettings.speed * 3.0; // Stronger pointer interaction
+
+                        if (shape === 'attract_to_pointer') {
+                            this.vx += fdx * fApplied * 0.05 * dtFactor;
+                            this.vy += fdy * fApplied * 0.05 * dtFactor;
+                        } else {
+                            this.vx -= fdx * fApplied * 0.05 * dtFactor;
+                            this.vy -= fdy * fApplied * 0.05 * dtFactor;
+                        }
+                    }
+                    this.shapeTargetX = null; this.shapeTargetY = null;
+                } else if (this.shapeTargetX !== null && this.shapeTargetY !== null) {
+                    let dx = this.shapeTargetX - this.x; let dy = this.shapeTargetY - this.y;
+                    this.x += dx * 0.08 * dtFactor; // Slightly adjusted easing
+                    this.y += dy * 0.08 * dtFactor;
+                    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) { this.vx *= 0.85; this.vy *= 0.85; }
+                }
+
+                this.x += this.vx * dtFactor;
+                this.y += this.vy * dtFactor;
+
+                if (shape === 'random_roam' || (shape === 'flow_field' && Math.random() < 0.05)) {
+                     if (this.shapeTargetX === null) {
+                        this.vx += (Math.random() - 0.5) * 0.2 * dtFactor;
+                        this.vy += (Math.random() - 0.5) * 0.2 * dtFactor;
+                    }
+                }
+
+                const restitution = 0.6;
+                if (this.x + this.size > canvas.width) { this.x = canvas.width - this.size; this.vx *= -restitution; }
+                else if (this.x - this.size < 0) { this.x = this.size; this.vx *= -restitution; }
+                if (this.y + this.size > canvas.height) { this.y = canvas.height - this.size; this.vy *= -restitution; }
+                else if (this.y - this.size < 0) { this.y = this.size; this.vy *= -restitution; }
+
+                const maxSpeed = currentSettings.speed * this.speedFactor;
+                const speedMag = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speedMag > maxSpeed) {
+                    this.vx = (this.vx / speedMag) * maxSpeed;
+                    this.vy = (this.vy / speedMag) * maxSpeed;
+                }
+                if (shape !== 'flow_field' && this.shapeTargetX === null && shape !== 'exploding_star' && !((shape === 'attract_to_pointer' || shape === 'repel_from_pointer') && pointer.x !== null)) {
+                    this.vx *= (1 - 0.01 * dtFactor); // Softer damping
+                    this.vy *= (1 - 0.01 * dtFactor);
+                }
+            }
+            setShapeTarget(x, y) { this.shapeTargetX = x; this.shapeTargetY = y; }
+            clearShapeTarget() {
+                this.shapeTargetX = null; this.shapeTargetY = null;
+                if (currentSettings.shape !== 'flow_field' && currentSettings.shape !== 'exploding_star') {
+                    this.vx = (Math.random() - 0.5) * currentSettings.speed * 1.2 * this.speedFactor;
+                    this.vy = (Math.random() - 0.5) * currentSettings.speed * 1.2 * this.speedFactor;
+                }
+            }
+            startExplosion() {
+                this.isExploding = true; this.explosionTime = 0;
+                const angle = Math.random() * Math.PI * 2;
+                const explosionStrength = (Math.random() * 0.7 + 0.3) * currentSettings.speed * 12;
+                this.vx = Math.cos(angle) * explosionStrength;
+                this.vy = Math.sin(angle) * explosionStrength;
+            }
+        }
+
+        function initParticles() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            particles = [];
+            const particleNum = currentSettings.count;
+            for (let i = 0; i < particleNum; i++) {
+                particles.push(new Particle(Math.random() * canvas.width, Math.random() * canvas.height));
+            }
+            applyShapeFormation();
+        }
+
+        function applyShapeFormation() {
+            const shape = currentSettings.shape;
+            const centerX = canvas.width / 2; const centerY = canvas.height / 2;
+            const baseRadius = Math.min(canvas.width, canvas.height) / 3.2;
+
+            particles.forEach((particle, index) => {
+                particle.clearShapeTarget(); particle.isExploding = false;
+
+                if (shape === 'circle') {
+                    const angle = (index / particles.length) * Math.PI * 2;
+                    particle.setShapeTarget(centerX + Math.cos(angle) * baseRadius, centerY + Math.sin(angle) * baseRadius);
+                } else if (shape === 'square_shape') { // Renamed from 'square'
+                    const sideLength = baseRadius * 1.7;
+                    const particlesPerSide = Math.max(1, Math.floor(particles.length / 4));
+                    const side = Math.floor(index / particlesPerSide);
+                    const posInSide = index % particlesPerSide;
+                    let x, y;
+                    const ratio = particlesPerSide > 1 ? (posInSide / (particlesPerSide - 1)) : 0.5;
+
+                    if (side === 0) { x = centerX - sideLength / 2 + ratio * sideLength; y = centerY - sideLength / 2; }
+                    else if (side === 1) { x = centerX + sideLength / 2; y = centerY - sideLength / 2 + ratio * sideLength; }
+                    else if (side === 2) { x = centerX + sideLength / 2 - ratio * sideLength; y = centerY + sideLength / 2; }
+                    else { x = centerX - sideLength / 2; y = centerY + sideLength / 2 - ratio * sideLength; }
+                     if (particles.length <= 4 && index < particles.length) {
+                        if (index === 0) { x = centerX - sideLength/2; y = centerY - sideLength/2; }
+                        if (index === 1) { x = centerX + sideLength/2; y = centerY - sideLength/2; }
+                        if (index === 2) { x = centerX + sideLength/2; y = centerY + sideLength/2; }
+                        if (index === 3) { x = centerX - sideLength/2; y = centerY + sideLength/2; }
+                    }
+                    particle.setShapeTarget(x,y);
+                } else if (shape === 'line_wave') {
+                    const amplitude = baseRadius / 2.2;
+                    const frequency = 3.5;
+                    const xPos = (index / (particles.length -1 + Number.MIN_VALUE)) * (canvas.width * 0.85) + canvas.width * 0.075;
+                    const yPos = centerY + Math.sin((index / particles.length) * Math.PI * frequency * 2 + time * 0.5) * amplitude;
+                    particle.setShapeTarget(xPos, yPos);
+                } else if (shape === 'exploding_star') {
+                    particle.x = centerX; particle.y = centerY;
+                    particle.startExplosion();
+                } else { // flow_field, random_roam, pointer interactions
+                    particle.clearShapeTarget();
+                }
+            });
+            if (shape === 'exploding_star') {
+                setTimeout(() => {
+                    if (currentSettings.shape === 'exploding_star') {
+                        ui.shape.value = 'flow_field'; updateSettingsFromUI(); applyShapeFormation();
+                    }
+                }, 2800);
+            }
+        }
+
+        function updateSpatialGrid() {
+            spatialGrid = {};
+            if (currentSettings.connectionDistance <= 0) return;
+
+            for (let i = 0; i < particles.length; i++) {
+                const particle = particles[i];
+                const cellX = Math.floor(particle.x / gridCellSize);
+                const cellY = Math.floor(particle.y / gridCellSize);
+                const key = `${cellX}_${cellY}`;
+                if (!spatialGrid[key]) {
+                    spatialGrid[key] = [];
+                }
+                spatialGrid[key].push(particle);
+            }
+        }
+        
+        let lastTimestamp = 0;
+        function animate(timestamp) {
+            const deltaTime = timestamp - lastTimestamp;
+            lastTimestamp = timestamp;
+            if (deltaTime > 100) { // Cap deltaTime to prevent jumps if tab was inactive
+                 requestAnimationFrame(animate); return;
+            }
+
+
+            time += currentSettings.flowFieldSpeed * (deltaTime); // deltaTime usage for time
+
+            // Background fade effect
+            const baseRgb = hexToRgb(currentSettings.canvasBackgroundColor);
+            ctx.fillStyle = `rgba(${baseRgb.r}, ${baseRgb.g}, ${baseRgb.b}, ${currentSettings.canvasFadeOpacity})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (currentSettings.connectionDistance > 0) {
+                updateSpatialGrid();
+            }
+
+            particles.forEach((particle) => { // Removed index as it's not used here
+                particle.update(deltaTime);
+                particle.draw();
+            });
+
+            // Draw connection lines using spatial grid
+            if (currentSettings.connectionDistance > 0 && currentSettings.lineWidth > 0) {
+                const checkedPairs = new Set(); // To avoid drawing lines twice
+
+                for (let i = 0; i < particles.length; i++) {
+                    const particle = particles[i];
+                    const cellX = Math.floor(particle.x / gridCellSize);
+                    const cellY = Math.floor(particle.y / gridCellSize);
+
+                    for (let dx = -1; dx <= 1; dx++) {
+                        for (let dy = -1; dy <= 1; dy++) {
+                            const key = `${cellX + dx}_${cellY + dy}`;
+                            if (spatialGrid[key]) {
+                                spatialGrid[key].forEach(otherParticle => {
+                                    if (particle === otherParticle) return;
+
+                                    const pairKey1 = `${particles.indexOf(particle)}-${particles.indexOf(otherParticle)}`;
+                                    const pairKey2 = `${particles.indexOf(otherParticle)}-${particles.indexOf(particle)}`;
+                                    if (checkedPairs.has(pairKey1) || checkedPairs.has(pairKey2)) return;
+
+
+                                    const distSq = (particle.x - otherParticle.x)**2 + (particle.y - otherParticle.y)**2;
+                                    if (distSq < currentSettings.connectionDistance**2) {
+                                        ctx.beginPath();
+                                        const distance = Math.sqrt(distSq);
+                                        const opacity = (1 - (distance / currentSettings.connectionDistance)) * particle.alpha * otherParticle.alpha * 0.7;
+                                        
+                                        const color1 = hexToRgb(particle.color);
+                                        if (currentSettings.lineStyle === 'gradient') {
+                                            const color2 = hexToRgb(otherParticle.color);
+                                            const grad = ctx.createLinearGradient(particle.x, particle.y, otherParticle.x, otherParticle.y);
+                                            grad.addColorStop(0, `rgba(${color1.r},${color1.g},${color1.b},${opacity})`);
+                                            grad.addColorStop(1, `rgba(${color2.r},${color2.g},${color2.b},${opacity})`);
+                                            ctx.strokeStyle = grad;
+                                        } else { // Solid
+                                            ctx.strokeStyle = `rgba(${color1.r},${color1.g},${color1.b},${opacity})`;
+                                        }
+                                        
+                                        ctx.lineWidth = currentSettings.lineWidth;
+                                        ctx.moveTo(particle.x, particle.y);
+                                        ctx.lineTo(otherParticle.x, otherParticle.y);
+                                        ctx.stroke();
+                                        checkedPairs.add(pairKey1);
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            if(currentSettings.shape === 'line_wave') applyShapeFormation();
+
+            requestAnimationFrame(animate);
+        }
+
+        function setupEventListeners() {
+            window.addEventListener('resize', initParticles);
+
+            const handlePointerMove = (e) => {
+                e.preventDefault();
+                if (e.touches && e.touches.length > 0) { pointer.x = e.touches[0].clientX; pointer.y = e.touches[0].clientY; }
+                else { pointer.x = e.clientX; pointer.y = e.clientY; }
+            };
+            const handlePointerDown = (e) => { e.preventDefault(); pointer.isDown = true; handlePointerMove(e); };
+            const handlePointerUp = () => { pointer.isDown = false; };
+            const handlePointerLeave = () => { pointer.isDown = false; pointer.x = null; pointer.y = null; };
+
+            canvas.addEventListener('mousemove', handlePointerMove);
+            canvas.addEventListener('mousedown', handlePointerDown);
+            window.addEventListener('mouseup', handlePointerUp);
+            canvas.addEventListener('mouseleave', handlePointerLeave);
+            canvas.addEventListener('touchmove', handlePointerMove, { passive: false });
+            canvas.addEventListener('touchstart', handlePointerDown, { passive: false });
+            canvas.addEventListener('touchend', handlePointerUp);
+            canvas.addEventListener('touchcancel', handlePointerLeave);
+
+            Object.keys(ui).forEach(key => {
+                const el = ui[key];
+                if (el && el.tagName && (el.tagName.toLowerCase() === 'input' || el.tagName.toLowerCase() === 'select')) {
+                    const eventType = (el.type === 'range' || el.type === 'color' || key === 'canvasFadeOpacity') ? 'input' : 'change';
+                    el.addEventListener(eventType, () => {
+                        updateSettingsFromUI();
+                        if (key === 'particleCount') {
+                            initParticles();
+                        } else if (key === 'shape' && currentSettings.shape !== 'line_wave') {
+                            applyShapeFormation();
+                        }
+                    });
+                }
+            });
+            ui.resetButton.addEventListener('click', applyDefaultSettings);
+        }
+
+        function hexToRgb(hexStr) {
+            if (!hexStr) return {r:128,g:128,b:128}; // Default grey if invalid
+            const hex = hexStr.replace(/^#/, '');
+            const bigint = parseInt(hex, 16);
+            const r = (bigint >> 16) & 255;
+            const g = (bigint >> 8) & 255;
+            const b = bigint & 255;
+            return { r, g, b };
+        }
+        
+        applyDefaultSettings(); // Initialize with defaults
+        setupEventListeners();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
